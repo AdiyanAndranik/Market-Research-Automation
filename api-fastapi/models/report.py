@@ -3,12 +3,14 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
+
 class ReportRequest(BaseModel):
     keyword: str = Field(..., example="wireless earbuds")
     session_id: Optional[str] = None
     send_email: bool = False
     email_to: Optional[str] = None
     generate_pdf: bool = True
+
 
 class PriceDistribution(BaseModel):
     min_price: float
@@ -19,6 +21,7 @@ class PriceDistribution(BaseModel):
     mid_count: int
     premium_count: int
 
+
 class MarketInsight(BaseModel):
     total_products: int
     sources: List[str]
@@ -27,6 +30,7 @@ class MarketInsight(BaseModel):
     price_distribution: PriceDistribution
     sentiment_breakdown: Dict[str, int]
     top_brands: List[Dict[str, Any]]
+
 
 class ReportResponse(BaseModel):
     id: UUID
@@ -43,3 +47,4 @@ class ReportResponse(BaseModel):
     class Config:
         from_attributes = True
 
+        
