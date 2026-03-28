@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS product_analysis (
 
 CREATE INDEX IF NOT EXISTS idx_analysis_product_id ON product_analysis (product_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_product_unique ON product_analysis (product_id);
+
 CREATE TABLE IF NOT EXISTS product_rankings (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_id      UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -108,3 +110,4 @@ LEFT JOIN product_analysis a ON a.product_id = p.id
 LEFT JOIN product_rankings r ON r.product_id = p.id;
 
 SELECT 'Database initialized successfully' AS status;
+
