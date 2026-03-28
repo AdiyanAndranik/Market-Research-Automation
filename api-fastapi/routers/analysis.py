@@ -1,5 +1,5 @@
 """
-routers/analysis.py — AI analysis endpoints.
+AI analysis endpoints.
 
 Endpoints:
   POST /api/v1/analysis/analyze        — analyze a list of product IDs
@@ -8,9 +8,11 @@ Endpoints:
 """
 import asyncio
 import json
+
 import asyncpg
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+
 from config import get_settings
 from models.product import AnalyzeRequest
 from services.ai_service import analyze_product_full
@@ -18,8 +20,10 @@ from services.ai_service import analyze_product_full
 router = APIRouter()
 settings = get_settings()
 
+
 async def _get_db_conn():
     return await asyncpg.connect(settings.database_url)
+
 
 @router.post("/analyze", summary="Run AI analysis on a batch of products")
 async def analyze_products(request: AnalyzeRequest):
@@ -34,10 +38,9 @@ async def analyze_products(request: AnalyzeRequest):
 
     Called by n8n after scraping is complete.
     """
-
     if not request.product_ids:
-        raise HTTPException(status_code=400, detail="No product IDS provided")
-    
+        raise HTTPException(status_code=400, detail="No product IDs provided")
+
     conn = await _get_db_conn()
     try:
         id_list = [str(pid) for pid in request.product_ids]
@@ -54,9 +57,9 @@ async def analyze_products(request: AnalyzeRequest):
 
         if not rows:
             raise HTTPException(status_code=404, detail="No products found for given IDs")
-        
+
         logger.info(f"Starting AI analysis for {len(rows)} products")
-        
+
         results = []
         for row in rows:
             product = dict(row)
@@ -73,16 +76,16 @@ async def analyze_products(request: AnalyzeRequest):
                          keywords_extracted, model_used, tokens_used)
                     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::jsonb, $9, $10)
                     ON CONFLICT (product_id) DO UPDATE SET
-                        sentiment_score  = EXCLUDED.sentiment_score,
-                        sentiment_label  = EXCLUDED.sentiment_label,
-                        pros             = EXCLUDED.pros,
-                        cons             = EXCLUDED.cons,
+                        sentiment_score = EXCLUDED.sentiment_score,
+                        sentiment_label = EXCLUDED.sentiment_label,
+                        pros = EXCLUDED.pros,
+                        cons = EXCLUDED.cons,
                         fake_review_risk = EXCLUDED.fake_review_risk,
-                        summary          = EXCLUDED.summary,
+                        summary = EXCLUDED.summary,
                         keywords_extracted = EXCLUDED.keywords_extracted,
-                        model_used       = EXCLUDED.model_used,
-                        tokens_used      = EXCLUDED.tokens_used,
-                        analyzed_at      = NOW()
+                        model_used = EXCLUDED.model_used,
+                        tokens_used = EXCLUDED.tokens_used,
+                        analyzed_at = NOW()
                     """,
                     product["id"],
                     analysis["sentiment_score"],
@@ -91,7 +94,7 @@ async def analyze_products(request: AnalyzeRequest):
                     json.dumps(analysis["cons"]),
                     analysis["fake_review_risk"],
                     analysis["summary"],
-                    json.dumpts(analysis["keywords_extracted"]),
+                    json.dumps(analysis["keywords_extracted"]),
                     analysis["model_used"],
                     analysis["tokens_used"],
                 )
@@ -127,7 +130,7 @@ async def analyze_products(request: AnalyzeRequest):
             "total_tokens_used": total_tokens,
             "results": results,
         }
-    
+
     finally:
         await conn.close()
 
@@ -145,7 +148,7 @@ async def analyze_single_product(product_id: str):
         )
         if not row:
             raise HTTPException(status_code=404, detail="Product not found")
-        
+
         product = dict(row)
         product["id"] = str(product["id"])
         analysis = await analyze_product_full(product)
@@ -154,20 +157,20 @@ async def analyze_single_product(product_id: str):
             """
             INSERT INTO product_analysis
                 (product_id, sentiment_score, sentiment_label,
-                pros, cons, fake_review_risk, summary,
-                keywords_extracted, model_used, tokens_used)
+                 pros, cons, fake_review_risk, summary,
+                 keywords_extracted, model_used, tokens_used)
             VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::jsonb, $9, $10)
             ON CONFLICT (product_id) DO UPDATE SET
-                sentiment_score = EXCLUDED.sentiment_score,
-                sentiment_label = EXCLUDED.sentiment_label,
-                pros = EXCLUDED.pros,
-                cons = EXCLUDED.cons,
+                sentiment_score  = EXCLUDED.sentiment_score,
+                sentiment_label  = EXCLUDED.sentiment_label,
+                pros             = EXCLUDED.pros,
+                cons             = EXCLUDED.cons,
                 fake_review_risk = EXCLUDED.fake_review_risk,
-                summary = EXCLUDED.summary,
+                summary          = EXCLUDED.summary,
                 keywords_extracted = EXCLUDED.keywords_extracted,
-                model_used = EXCLUDED.model_used,
-                tokens_used = EXCLUDED.tokens_used,
-                analyzed_at = NOW()
+                model_used       = EXCLUDED.model_used,
+                tokens_used      = EXCLUDED.tokens_used,
+                analyzed_at      = NOW()
             """,
             product["id"],
             analysis["sentiment_score"],
@@ -190,6 +193,7 @@ async def analyze_single_product(product_id: str):
     finally:
         await conn.close()
 
+
 @router.get("/{product_id}", summary="Get analysis results for a product")
 async def get_analysis(product_id: str):
     """
@@ -209,11 +213,11 @@ async def get_analysis(product_id: str):
         )
         if not row:
             raise HTTPException(
-                status_code = 404,
-                detail = "No analysis found. Run /analyze first."
+                status_code=404,
+                detail="No analysis found. Run /analyze first."
             )
         return dict(row)
     finally:
         await conn.close()
 
-        
+

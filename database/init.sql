@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS product_rankings (
 
 CREATE INDEX IF NOT EXISTS idx_rankings_keyword ON product_rankings (keyword);
 CREATE INDEX IF NOT EXISTS idx_rankings_score ON product_rankings (score DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rankings_product_unique ON product_rankings (product_id);
 
 CREATE TABLE IF NOT EXISTS reports (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
