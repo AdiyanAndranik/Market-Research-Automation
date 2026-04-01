@@ -63,3 +63,4 @@ async def root():
 async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}")
     return JSONResponse(status_code=500, content={"error": str(exc)})
+

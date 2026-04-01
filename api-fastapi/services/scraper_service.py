@@ -10,8 +10,6 @@ import hashlib
 import re
 from datetime import datetime
 from typing import Optional
-from uuid import uuid4
-
 import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -109,7 +107,6 @@ async def scrape_amazon(keyword: str, max_results: int = 10) -> list[dict]:
             return []
 
         soup = BeautifulSoup(html, "lxml")
-
         items = soup.select("div[data-component-type='s-search-result']")
         logger.info(f"Amazon: found {len(items)} raw items for '{keyword}'")
 
@@ -123,12 +120,11 @@ async def scrape_amazon(keyword: str, max_results: int = 10) -> list[dict]:
                 link_el = item.select_one("h2 a")
                 product_url = (
                     "https://www.amazon.com" + link_el["href"]
-                    if link_el and link_el.get("href")
-                    else None
+                    if link_el and link_el.get("href") else None
                 )
 
                 price_whole = item.select_one("span.a-price-whole")
-                price_frac  = item.select_one("span.a-price-fraction")
+                price_frac = item.select_one("span.a-price-fraction")
                 if price_whole:
                     raw_price = price_whole.get_text(strip=True)
                     if price_frac:
@@ -138,10 +134,14 @@ async def scrape_amazon(keyword: str, max_results: int = 10) -> list[dict]:
                     price = None
 
                 rating_el = item.select_one("span.a-icon-alt")
-                rating = _clean_rating(rating_el.get_text(strip=True)) if rating_el else None
+                rating = _clean_rating(
+                                   rating_el.get_text(strip=True)
+                               ) if rating_el else None
 
                 reviews_el = item.select_one("span.a-size-base.s-underline-text")
-                review_count = _clean_reviews(reviews_el.get_text(strip=True)) if reviews_el else 0
+                review_count = _clean_reviews(
+                                   reviews_el.get_text(strip=True)
+                               ) if reviews_el else 0
 
                 img_el = item.select_one("img.s-image")
                 image_url = img_el["src"] if img_el else None
@@ -189,38 +189,52 @@ async def scrape_ebay(keyword: str, max_results: int = 10) -> list[dict]:
             logger.error(f"eBay: no HTML returned for '{keyword}'")
             return []
 
-        soup = BeautifulSoup(html, "lxml")
-        items = soup.select("li.s-item")
+        soup  = BeautifulSoup(html, "lxml")
+        items = (
+            soup.select(".s-item__wrapper")
+            or soup.select("li.s-item")
+            or soup.select(".s-item")
+        )
         logger.info(f"eBay: found {len(items)} raw items for '{keyword}'")
 
         for item in items[:max_results + 5]:
             try:
-                title_el = item.select_one("div.s-item__title span")
+                title_el = (
+                    item.select_one(".s-item__title span")
+                    or item.select_one(".s-item__title")
+                    or item.select_one("h3")
+                )
                 if not title_el:
                     continue
                 title = title_el.get_text(strip=True)
-
-                if "Shop on eBay" in title:
+                if "shop on ebay" in title.lower():
                     continue
 
-                link_el = item.select_one("a.s-item__link")
+                link_el = item.select_one(".s-item__link") or item.select_one("a")
                 product_url = link_el["href"] if link_el else None
 
-                price_el = item.select_one("span.s-item__price")
-                price_text = price_el.get_text(strip=True) if price_el else ""
-                price = _clean_price(price_text.split(" to ")[0])
+                price_el = item.select_one(".s-item__price")
+                price_txt = price_el.get_text(strip=True) if price_el else ""
+                price = _clean_price(price_txt.split(" to ")[0])
 
                 rating_el = item.select_one("div.x-star-rating span.clipped")
-                rating = _clean_rating(rating_el.get_text(strip=True)) if rating_el else None
+                rating = _clean_rating(
+                                   rating_el.get_text(strip=True)
+                               ) if rating_el else None
 
                 reviews_el = item.select_one("span.s-item__reviews-count span")
-                review_count = _clean_reviews(reviews_el.get_text(strip=True)) if reviews_el else 0
+                review_count = _clean_reviews(
+                                   reviews_el.get_text(strip=True)
+                               ) if reviews_el else 0
 
                 img_el = item.select_one("img.s-item__image-img")
                 image_url = img_el.get("src") or img_el.get("data-src") if img_el else None
 
                 availability_el = item.select_one("span.s-item__availability")
-                availability = availability_el.get_text(strip=True) if availability_el else "Available"
+                availability = (
+                    availability_el.get_text(strip=True)
+                    if availability_el else "Available"
+                )
 
                 products.append({
                     "external_id": _make_external_id("ebay", product_url or title),
@@ -265,8 +279,7 @@ async def scrape_walmart(keyword: str, max_results: int = 10) -> list[dict]:
             logger.error(f"Walmart: no HTML returned for '{keyword}'")
             return []
 
-        soup = BeautifulSoup(html, "lxml")
-
+        soup   = BeautifulSoup(html, "lxml")
         script = soup.find("script", {"id": "__NEXT_DATA__"})
 
         if script:
@@ -290,15 +303,20 @@ async def scrape_walmart(keyword: str, max_results: int = 10) -> list[dict]:
 
                         price_info = item.get("priceInfo", {})
                         price = price_info.get("currentPrice", {}).get("price")
-
                         rating = item.get("averageRating")
                         review_count = item.get("numberOfReviews", 0)
-
                         image_url = item.get("imageInfo", {}).get("thumbnailUrl")
                         product_id = item.get("usItemId", "")
-                        product_url = f"https://www.walmart.com/ip/{product_id}" if product_id else None
+                        product_url = (
+                            f"https://www.walmart.com/ip/{product_id}"
+                            if product_id else None
+                        )
                         brand = item.get("brand")
-                        availability = "In Stock" if item.get("availabilityStatus") == "IN_STOCK" else "Limited"
+                        availability = (
+                            "In Stock"
+                            if item.get("availabilityStatus") == "IN_STOCK"
+                            else "Limited"
+                        )
 
                         products.append({
                             "external_id": _make_external_id("walmart", product_url or title),
@@ -364,9 +382,10 @@ async def scrape_walmart(keyword: str, max_results: int = 10) -> list[dict]:
 def deduplicate_products(products: list[dict]) -> list[dict]:
     """
     Remove duplicate products by external_id.
-    If same product appears across sources, keep all (different source = different listing).
+    If same product appears across sources, keep all
+    (different source = different listing).
     """
-    seen = set()
+    seen   = set()
     unique = []
     for p in products:
         key = p.get("external_id", "")
@@ -412,6 +431,4 @@ async def scrape_all_sources(
     await asyncio.sleep(settings.request_delay)
 
     return deduplicate_products(all_products)
-
-
 

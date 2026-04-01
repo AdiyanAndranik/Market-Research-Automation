@@ -12,16 +12,34 @@ Categories assigned after ranking:
     hidden_gem    — high score but low review count (underrated)
 """
 import math
+from collections import Counter
 from typing import Optional
 from loguru import logger
+
+
+def _f(value) -> Optional[float]:
+    """Safely convert any numeric value (including Decimal) to float."""
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _i(value) -> int:
+    """Safely convert any numeric value to int."""
+    try:
+        return int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 # ─────────────────────────────────────────────────────────
 # Price tier classification
 # ─────────────────────────────────────────────────────────
 
-def classify_price_tier(price: Optional[float]) -> str:
+def classify_price_tier(price) -> str:
     """Classify a product into budget / mid / premium tier."""
+    price = _f(price)
     if price is None:
         return "unknown"
     if price < 30:
@@ -35,30 +53,24 @@ def classify_price_tier(price: Optional[float]) -> str:
 # Value score — how much quality per dollar
 # ─────────────────────────────────────────────────────────
 
-def compute_value_score(
-    price: Optional[float],
-    rating: Optional[float],
-    all_prices: list[float],
-) -> float:
+def compute_value_score(price, rating, all_prices: list) -> float:
     """
     Compute a value score between 0.0 and 1.0.
     Higher = better value for money.
-
-    Formula: normalize (rating / price) relative to all products.
-    Products with no price get a neutral 0.5.
     """
+    price  = _f(price)
+    rating = _f(rating)
+
     if not price or price <= 0 or not rating:
         return 0.5
 
-    this_qpd = rating / price
-
-    valid_prices  = [p for p in all_prices if p and p > 0]
-    valid_ratings = [rating] * len(valid_prices)
+    this_qpd    = rating / price
+    valid_prices = [_f(p) for p in all_prices if _f(p) and _f(p) > 0]
 
     if not valid_prices:
         return 0.5
 
-    max_qpd = max((r / p for r, p in zip(valid_ratings, valid_prices)), default=1.0)
+    max_qpd = max((5.0 / p for p in valid_prices), default=1.0)
 
     if max_qpd == 0:
         return 0.5
@@ -71,43 +83,43 @@ def compute_value_score(
 # ─────────────────────────────────────────────────────────
 
 def compute_score(
-    rating: Optional[float],
-    review_count: int,
-    price: Optional[float],
-    all_prices: list[float],
-    sentiment_score: Optional[float] = None,
+    rating,
+    review_count,
+    price,
+    all_prices: list,
+    sentiment_score=None,
 ) -> float:
     """
     Compute a final ranking score for a product.
 
     Weights:
         40% — rating (normalized to 0-1 from 0-5 scale)
-        30% — review volume (log scale so 10k reviews isn't 1000x better than 10)
+        30% — review volume (log scale)
         30% — value score (quality per dollar, normalized)
-
-    Sentiment score from AI adds a small bonus/penalty (+/- 5%).
-
-    Returns float between 0.0 and 1.0.
     """
-    rating_norm = (rating / 5.0) if rating else 0.0
+    rating        = _f(rating)
+    review_count  = _i(review_count)
+    price         = _f(price)
+    sentiment_score = _f(sentiment_score)
+
+    rating_norm      = (rating / 5.0) if rating else 0.0
     rating_component = rating_norm * 0.40
 
     if review_count > 0:
-        review_log  = math.log(review_count + 1)
-        review_max  = math.log(100_001)
+        review_log = math.log(review_count + 1)
+        review_max = math.log(100_001)
         review_norm = min(review_log / review_max, 1.0)
     else:
         review_norm = 0.0
     review_component = review_norm * 0.30
 
-    value  = compute_value_score(price, rating, all_prices)
+    value = compute_value_score(price, rating, all_prices)
     value_component = value * 0.30
 
     score = rating_component + review_component + value_component
 
     if sentiment_score is not None:
-        sentiment_adjustment = sentiment_score * 0.05
-        score = score + sentiment_adjustment
+        score = score + (sentiment_score * 0.05)
 
     return round(max(0.0, min(1.0, score)), 4)
 
@@ -116,7 +128,7 @@ def compute_score(
 # Category assignment
 # ─────────────────────────────────────────────────────────
 
-def assign_categories(ranked_products: list[dict]) -> list[dict]:
+def assign_categories(ranked_products: list) -> list:
     """
     Assign special category labels to standout products.
 
@@ -125,9 +137,7 @@ def assign_categories(ranked_products: list[dict]) -> list[dict]:
         best_value    — best (score / price) ratio, min rating 3.5
         cheapest      — lowest price with rating >= 3.5
         most_popular  — highest review count
-        hidden_gem    — top 25% score but bottom 25% review count (underrated)
-
-    One product can hold multiple categories.
+        hidden_gem    — top 25% score but bottom 25% review count
     """
     if not ranked_products:
         return []
@@ -136,46 +146,44 @@ def assign_categories(ranked_products: list[dict]) -> list[dict]:
     for p in products:
         p["category"] = []
 
-    rated = [p for p in products if p.get("rating") and p["rating"] >= 3.5]
-    priced = [p for p in products if p.get("price") and p["price"] > 0]
+    products[0]["category"].append("best_quality")
 
-    if products:
-        products[0]["category"].append("best_quality")
+    value_candidates = [
+        p for p in products
+        if _f(p.get("price")) and _f(p.get("price")) > 0
+        and _f(p.get("score")) is not None
+        and _f(p.get("rating") or 0) >= 3.5
+    ]
+    if value_candidates:
+        best_val = max(
+            value_candidates,
+            key=lambda p: _f(p["score"]) / _f(p["price"])
+        )
+        best_val["category"].append("best_value")
 
-    if priced and rated:
-        value_candidates = [
-            p for p in products
-            if p.get("price") and p.get("score") and p.get("rating", 0) >= 3.5
-        ]
-        if value_candidates:
-            best_val = max(
-                value_candidates,
-                key=lambda p: p["score"] / p["price"]
-            )
-            best_val["category"].append("best_value")
-
-    cheap_candidates = [p for p in products if p.get("price") and p.get("rating", 0) >= 3.5]
+    cheap_candidates = [
+        p for p in products
+        if _f(p.get("price")) and _f(p.get("rating") or 0) >= 3.5
+    ]
     if cheap_candidates:
-        cheapest = min(cheap_candidates, key=lambda p: p["price"])
+        cheapest = min(cheap_candidates, key=lambda p: _f(p["price"]))
         cheapest["category"].append("cheapest")
 
-    if products:
-        most_popular = max(products, key=lambda p: p.get("review_count", 0))
-        most_popular["category"].append("most_popular")
-
+    most_popular = max(products, key=lambda p: _i(p.get("review_count")))
+    most_popular["category"].append("most_popular")
 
     if len(products) >= 4:
-        scores       = sorted([p.get("score", 0) for p in products], reverse=True)
-        review_counts = sorted([p.get("review_count", 0) for p in products])
+        scores = sorted([_f(p.get("score")) or 0 for p in products], reverse=True)
+        review_counts = sorted([_i(p.get("review_count")) for p in products])
 
-        score_threshold  = scores[len(scores) // 4]
-        review_threshold = review_counts[len(review_counts) // 4] 
+        score_threshold = scores[len(scores) // 4]
+        review_threshold = review_counts[len(review_counts) // 4]
 
         for p in products:
             if (
-                p.get("score", 0) >= score_threshold
-                and p.get("review_count", 0) <= review_threshold
-                and p.get("review_count", 0) > 0
+                (_f(p.get("score")) or 0) >= score_threshold
+                and _i(p.get("review_count")) <= review_threshold
+                and _i(p.get("review_count")) > 0
                 and "hidden_gem" not in p["category"]
             ):
                 p["category"].append("hidden_gem")
@@ -183,7 +191,7 @@ def assign_categories(ranked_products: list[dict]) -> list[dict]:
 
     for p in products:
         cats = p["category"]
-        p["category"] = cats[0] if cats else "standard"
+        p["category"]      = cats[0] if cats else "standard"
         p["all_categories"] = cats
 
     return products
@@ -193,7 +201,7 @@ def assign_categories(ranked_products: list[dict]) -> list[dict]:
 # Main ranking pipeline
 # ─────────────────────────────────────────────────────────
 
-def rank_products(products: list[dict]) -> list[dict]:
+def rank_products(products: list) -> list:
     """
     Full ranking pipeline for a list of products.
 
@@ -202,9 +210,6 @@ def rank_products(products: list[dict]) -> list[dict]:
     3. Assign rank positions
     4. Assign categories
     5. Classify price tiers
-
-    Input: list of product dicts (with optional analysis data merged in)
-    Output: same list, sorted and enriched with score/rank/category fields
     """
     if not products:
         return []
@@ -212,18 +217,18 @@ def rank_products(products: list[dict]) -> list[dict]:
     logger.info(f"Ranking {len(products)} products")
 
     all_prices = [
-        p["price"] for p in products
-        if p.get("price") and p["price"] > 0
+        _f(p["price"]) for p in products
+        if _f(p.get("price")) and _f(p.get("price")) > 0
     ]
 
     scored = []
     for p in products:
         score = compute_score(
-            rating=p.get("rating"),
-            review_count=p.get("review_count", 0),
-            price=p.get("price"),
-            all_prices=all_prices,
-            sentiment_score=p.get("sentiment_score"),
+            rating = p.get("rating"),
+            review_count = p.get("review_count", 0),
+            price = p.get("price"),
+            all_prices = all_prices,
+            sentiment_score = p.get("sentiment_score"),
         )
         scored.append({**p, "score": score})
 
@@ -231,23 +236,20 @@ def rank_products(products: list[dict]) -> list[dict]:
 
     for i, p in enumerate(scored):
         p["rank_position"] = i + 1
-        p["price_tier"] = classify_price_tier(p.get("price"))
+        p["price_tier"]    = classify_price_tier(p.get("price"))
 
     ranked = assign_categories(scored)
 
     logger.success(
-        f"Ranking complete. Top product: '{ranked[0]['title'][:50]}' "
+        f"Ranking complete. Top: '{ranked[0]['title'][:50]}' "
         f"score={ranked[0]['score']}"
     )
 
     return ranked
 
 
-# ─────────────────────────────────────────────────────────
-# Market statistics — used by report generator
-# ─────────────────────────────────────────────────────────
 
-def compute_market_stats(products: list[dict]) -> dict:
+def compute_market_stats(products: list) -> dict:
     """
     Compute aggregate statistics across all ranked products.
     Used as input to the AI report generator.
@@ -255,13 +257,13 @@ def compute_market_stats(products: list[dict]) -> dict:
     if not products:
         return {}
 
-    prices  = [p["price"] for p in products if p.get("price")]
-    ratings = [p["rating"] for p in products if p.get("rating")]
-    reviews = [p["review_count"] for p in products if p.get("review_count")]
+    prices  = [_f(p["price"]) for p in products if _f(p.get("price"))]
+    ratings = [_f(p["rating"]) for p in products if _f(p.get("rating"))]
+    reviews = [_i(p["review_count"]) for p in products if _i(p.get("review_count"))]
 
     sentiments = {"positive": 0, "neutral": 0, "negative": 0}
     for p in products:
-        label = p.get("sentiment_label", "neutral")
+        label = p.get("sentiment_label", "neutral") or "neutral"
         if label in sentiments:
             sentiments[label] += 1
 
@@ -278,10 +280,9 @@ def compute_market_stats(products: list[dict]) -> dict:
     all_pros = []
     all_cons = []
     for p in products:
-        all_pros.extend(p.get("pros", []) or [])
-        all_cons.extend(p.get("cons", []) or [])
+        all_pros.extend(p.get("pros") or [])
+        all_cons.extend(p.get("cons") or [])
 
-    from collections import Counter
     top_pros = [item for item, _ in Counter(all_pros).most_common(5)]
     top_cons = [item for item, _ in Counter(all_cons).most_common(5)]
 
@@ -297,7 +298,7 @@ def compute_market_stats(products: list[dict]) -> dict:
         "total_products": len(products),
         "sources": sources,
         "avg_rating": round(sum(ratings) / len(ratings), 2) if ratings else 0,
-        "avg_reviews": int(sum(reviews) / len(reviews)) if reviews else 0,
+        "avg_reviews": int(sum(reviews) / len(reviews))       if reviews else 0,
         "price_distribution": price_dist,
         "sentiment_breakdown": sentiments,
         "top_pros": top_pros,
