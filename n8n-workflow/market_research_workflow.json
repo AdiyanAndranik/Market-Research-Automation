@@ -1,0 +1,765 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        -384
+      ],
+      "id": "75e671ae-cb27-43c2-b664-e186bd47f530",
+      "name": "Cron — Weekly Monday 8AM"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "market-research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -80,
+        -80
+      ],
+      "id": "9fd0e8e8-aae6-41e2-8c58-5e2da7e61c7d",
+      "name": "Webhook",
+      "webhookId": "998878fb-8ed8-436b-9433-c1cc32608d40"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cf1bcdca-be0c-4db5-be8c-d9ef04cb8881",
+              "name": "keyword",
+              "value": "={{ $json.body?.keyword ?? $json.keyword ?? 'wireless headphones' }}",
+              "type": "string"
+            },
+            {
+              "id": "7cff46e7-6cf0-47ec-b542-43f7ae2f60b2",
+              "name": "sources",
+              "value": "={{ $json.body?.sources ?? 'amazon,ebay,walmart' }}",
+              "type": "string"
+            },
+            {
+              "id": "2fe9002a-d383-4683-9c74-1b27622c5781",
+              "name": "max_results",
+              "value": "={{ $json.body?.max_results ?? 10 }}",
+              "type": "number"
+            },
+            {
+              "id": "db03b10d-4329-43c2-a8d8-af5eff776464",
+              "name": "email_to",
+              "value": "={{ $json.body?.email_to ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a4ac28f0-fcb4-460d-bd49-704d3dc3156d",
+              "name": "session_id",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        -240
+      ],
+      "id": "a22d33b2-8733-421d-99f3-0beaee21846b",
+      "name": "Set Search Parameters"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/scrape/search",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "keyword",
+              "value": "={{ $json.keyword }}"
+            },
+            {
+              "name": "sources",
+              "value": "={{ $json.sources.split(',') }}"
+            },
+            {
+              "name": "max_results",
+              "value": "={{ parseInt($json.max_results) }}"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $json.session_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        592,
+        -240
+      ],
+      "id": "98e654f2-c832-4602-8445-4a8474feffd8",
+      "name": "HTTP — Scrape All Sources"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "68ab8593-d4bd-4514-907e-ef1e2135f0cf",
+              "leftValue": "={{ $json.products_found }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        -240
+      ],
+      "id": "de0c1fff-1299-40c6-b0a1-5db70006755e",
+      "name": "IF — Products Found?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const scrapeResult = $input.first().json;\nconst products = scrapeResult.products || [];\n\nif (products.length === 0) {\n  throw new Error('No products to analyze');\n}\n\nreturn [{\n  json: {\n    product_ids: products.map(p => p.id),\n    keyword: scrapeResult.keyword,\n    session_id: scrapeResult.session_id,\n    products_found: scrapeResult.products_found,\n    sources_scraped: scrapeResult.sources_scraped,\n    duration_scrape: scrapeResult.duration_seconds\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        -320
+      ],
+      "id": "9e9c0284-77ca-422b-9cb3-27809e59a33b",
+      "name": "Extract Product IDs"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"error\", \n  \"message\": \"No products found for the given keyword.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1136,
+        -144
+      ],
+      "id": "ccb11e47-e7d6-41c7-8e79-329a1cb21b74",
+      "name": "Webhook — No Products Error"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/analysis/analyze",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product_ids",
+              "value": "={{ $json.product_ids }}"
+            },
+            {
+              "name": "include_fake_detection",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        -320
+      ],
+      "id": "d7b4805b-d7cd-4661-ada6-3ff8a1cf45d3",
+      "name": "HTTP — AI Analysis"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1568,
+        -320
+      ],
+      "id": "e7f7b9a9-f493-4518-98ce-9c7cc55a57e9",
+      "name": "Split In Batches"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/products/rank",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "keyword",
+              "value": "={{ $('Set Search Parameters').first().json.keyword }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1824,
+        -336
+      ],
+      "id": "eb778187-f218-481b-8e47-88af54afbcf0",
+      "name": "HTTP — Rank Products"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rankResult = $input.first().json;\nconst stats = rankResult.market_stats || {};\nconst priceInfo = stats.price_distribution || {};\nconst avgPrice = parseFloat(priceInfo.avg || 0);\nconst minPrice = parseFloat(priceInfo.min || 0);\n\nconst dropThreshold = avgPrice * 0.60;\nconst hasPriceDrop = minPrice < dropThreshold && minPrice > 0;\n\nreturn [{\n  json: {\n    ...rankResult,\n    price_alert: hasPriceDrop,\n    drop_threshold: dropThreshold,\n    keyword: $('Set Search Parameters').first().json.keyword,\n    alert_message: hasPriceDrop\n      ? `Price drop detected! Min $${minPrice.toFixed(2)} vs avg $${avgPrice.toFixed(2)}`\n      : 'Prices within normal range'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        -336
+      ],
+      "id": "3e4084db-896f-4d77-9fbb-fd3cfc31b6d9",
+      "name": "Code — Price Drop Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "980f7ce9-485b-4703-80fe-6e58a1c02a04",
+              "leftValue": "={{ $json.price_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2336,
+        -336
+      ],
+      "id": "6f116bf2-53f8-4347-bb3f-95c52d2dd168",
+      "name": "IF — Price Drop Alert?"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#alerts",
+          "mode": "name"
+        },
+        "text": "=     *⚠️ Price Drop Alert*      *Keyword:* {{ $('Set Search Parameters').first().json.keyword }}      *Alert:* {{ $json.alert_message }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2544,
+        -496
+      ],
+      "id": "cf84273a-0038-4843-b85f-4bea31f4dfea",
+      "name": "Slack — Price Drop Alert",
+      "webhookId": "388c2f7d-7ab2-4a28-972d-79955893ba41",
+      "credentials": {
+        "slackApi": {
+          "id": "cblOOovul8Rsj8sM",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/api/v1/reports/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "keyword",
+              "value": "={{ $('Set Search Parameters').first().json.keyword }}"
+            },
+            {
+              "name": "generate_pdf",
+              "value": "=true"
+            },
+            {
+              "name": "send_email",
+              "value": "={{ $('Set Search Parameters').first().json.email_to !== '' }}"
+            },
+            {
+              "name": "email_to",
+              "value": "={{ $('Set Search Parameters').first().json.email_to }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2768,
+        -320
+      ],
+      "id": "a9ccf17c-8437-4872-8626-7eeb52c40e52",
+      "name": "HTTP — Generate Report + PDF"
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\nconst content = report.content || {};\nconst stats = content.stats || {};\nconst price = stats.price_distribution || {};\n\nreturn [{\n  json: {\n    report_id: report.report_id,\n    keyword: report.keyword,\n    status: report.status,\n    summary: report.summary,\n    pdf_path: report.pdf_path,\n    products: report.products,\n    avg_price: price.avg || 0,\n    avg_rating: stats.avg_rating || 0,\n    top_product: content.top_products?.[0]?.title || 'N/A',\n    top_category: content.top_products?.[0]?.category || 'N/A',\n    sources: (stats.sources || []).join(', '),\n    generated_at: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        -320
+      ],
+      "id": "bc38f9c8-5c35-42d3-bb43-366d8c58f2b0",
+      "name": "Code — Format Report Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO search_sessions (keyword, status, products_found, n8n_execution_id, completed_at)\n     VALUES ('{{ $json.keyword }}', 'complete', {{ $json.products }}, '{{ $json.report_id }}', NOW())",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3264,
+        -704
+      ],
+      "id": "17107090-02cd-4152-a309-077ff78c2a23",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "1ReddcUaRYdKUjXd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3264,
+        -464
+      ],
+      "id": "abd2911c-08f0-452e-8dc9-f2ee2856df88",
+      "name": "Google Sheets — Append Report"
+    },
+    {
+      "parameters": {
+        "toEmail": "={{ $('Set Search Parameters').first().json.email_to }}",
+        "subject": "=Market Research Report: {{ $json.keyword }}",
+        "html": "=     <h2>Your Market Research Report is Ready</h2>\n     <p><strong>Keyword:</strong> {{ $json.keyword }}</p>\n     <p><strong>Products Analyzed:</strong> {{ $json.products }}</p>\n     <p><strong>Average Price:</strong> ${{ $json.avg_price }}</p>\n     <p><strong>Average Rating:</strong> {{ $json.avg_rating }}/5.0</p>\n     <p><strong>Top Product:</strong> {{ $json.top_product }}</p>\n     <hr/>\n     <p><strong>Summary:</strong><br/>{{ $json.summary }}</p>\n     <hr/>\n     <p><em>Generated by AI Market Research Agent</em></p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3264,
+        -208
+      ],
+      "id": "b2f245fb-b04e-4532-9ae5-f36984c07dd0",
+      "name": "Send Email Report",
+      "webhookId": "cb2c3d92-0dbb-41b4-8313-1f6310140f84"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#general",
+          "mode": "name"
+        },
+        "text": "=* Market Research Complete*\n*Keyword:* {{ $json.keyword }}\n*Products:* {{ $json.products }} analyzed\n*Top Product:* {{ $json.top_product }}\n*Avg Price:* ${{ parseFloat($json.avg_price).toFixed(2) }}\n*Report ID:* {{ $json.report_id }}\n\n_{{ $json.summary }}_",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        3264,
+        48
+      ],
+      "id": "5cf7e9ca-6c00-406c-9f5b-9712334649d3",
+      "name": "Send a message",
+      "webhookId": "7f940631-f3fe-4b52-9ad1-1d964585b9bb",
+      "credentials": {
+        "slackApi": {
+          "id": "cblOOovul8Rsj8sM",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n \"status\": \"complete\",\n \"report_id\": \"={{ $json.report_id }}\",\n \"keyword\": \"={{ $json.keyword }}\",\n \"products\": \"={{ $json.products }}\",\n \"summary\": \"={{ $json.summary }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3264,
+        288
+      ],
+      "id": "4dc89b40-c4a1-4b79-8c11-73991440d177",
+      "name": "Webhook Response"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        -688
+      ],
+      "id": "5266782b-b076-4563-8ce2-f4226288a6a6",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#alerts",
+          "mode": "name"
+        },
+        "text": "=*Pipeline Error*\n*Workflow:* AI Market Research Agent \n*Error:* {{ $json.errorMessage }} \n*Time:* {{ $now.toISO() }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2896,
+        -688
+      ],
+      "id": "ce8cea12-f926-4744-909d-ba099749c47c",
+      "name": "Slack — Error Alert",
+      "webhookId": "3e46e4e2-d931-41ca-833e-761cf819f45b",
+      "credentials": {
+        "slackApi": {
+          "id": "cblOOovul8Rsj8sM",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        368,
+        -240
+      ],
+      "id": "472a40bd-e2a2-4b45-b8b6-ffb6a4488f39",
+      "name": "HTTP — Health Check"
+    }
+  ],
+  "connections": {
+    "Cron — Weekly Monday 8AM": {
+      "main": [
+        [
+          {
+            "node": "Set Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Search Parameters": {
+      "main": [
+        [
+          {
+            "node": "HTTP — Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP — Scrape All Sources": {
+      "main": [
+        [
+          {
+            "node": "IF — Products Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — Products Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract Product IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Webhook — No Products Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Product IDs": {
+      "main": [
+        [
+          {
+            "node": "HTTP — AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP — AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "HTTP — Rank Products",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "HTTP — Rank Products": {
+      "main": [
+        [
+          {
+            "node": "Code — Price Drop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code — Price Drop Check": {
+      "main": [
+        [
+          {
+            "node": "IF — Price Drop Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — Price Drop Alert?": {
+      "main": [
+        [
+          {
+            "node": "Slack — Price Drop Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP — Generate Report + PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack — Price Drop Alert": {
+      "main": [
+        [
+          {
+            "node": "HTTP — Generate Report + PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP — Generate Report + PDF": {
+      "main": [
+        [
+          {
+            "node": "Code — Format Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code — Format Report Data": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets — Append Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets — Append Report": {
+      "main": [
+        []
+      ]
+    },
+    "Send Email Report": {
+      "main": [
+        []
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Slack — Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP — Health Check": {
+      "main": [
+        [
+          {
+            "node": "HTTP — Scrape All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c5f113737a499c31f7c113b19f6be4bebe9ef56d137872a3ed3f9008fa13c18c"
+  }
+}

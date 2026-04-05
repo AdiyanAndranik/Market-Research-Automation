@@ -228,3 +228,4 @@ report-generator/output/
 .DS_Store
 *.log
 logs/
+..txt
